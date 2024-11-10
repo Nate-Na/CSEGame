@@ -1,4 +1,4 @@
-import pygame, sys
+import pygame, sys, random
 from pygame.locals import *
 pygame.init()
 
@@ -7,6 +7,8 @@ clock = pygame.time.Clock()
 width = 750
 height = 750
 screen = pygame.display.set_mode((width, height))
+gameOver = False
+gameWon = False
 
 # Background Setup
 background = pygame.image.load("background.png")
@@ -41,10 +43,10 @@ class Character:
         self.start_x = x
 
         # Player Health (percentage of max health)
-        self.max_health = 20  # Max health (20 seconds of standing in a monster)
+        self.max_health = 15  # Max health (15 seconds of standing in a monster)
         self.health = self.max_health
 
-    def update(self, player_rect, enemies):
+    def update(self, player_rect, enemies, platforms, candles):
         if self.is_player:
             self.handle_player_input()  # Allows player to control main character!!!
         else:
@@ -75,6 +77,9 @@ class Character:
         # Check for collisions with monsters (enemies)
         self.check_monster_collision(enemies)
 
+        # Check for candle collisions
+        self.check_candle_collision(candles)
+
     def check_platforms(self, platforms):
         # Check if the player is colliding with any platforms
         for platform in platforms:
@@ -98,9 +103,15 @@ class Character:
             if self.rect.colliderect(enemy.rect):
                 if self.is_player:
                     self.health -= 0.1  # Reduce health every frame player collides with an enemy
-                    if self.health <= 0:
-                        print("Player died!")
-                        # You could add code to reset the game or end it here.
+                    #if self.health <= 0:
+
+
+    def check_candle_collision(self, candles):
+        global score
+        for candle in candles:
+            if self.rect.colliderect(candle.rect):
+                candles.remove(candle)  # Remove the candle
+                score += 1  # Increase the score
 
     def check_boundaries(self):
         # Horizontal Boundaries (left and right)
@@ -156,12 +167,68 @@ class Character:
         elif self.rect.x - self.start_x <= 0:
             self.patrol_direction = 1  # Changes direction
 
+# Candle Class
+class Candle:
+    def __init__(self, x, y):
+        self.image = pygame.image.load('candle.png').convert_alpha()
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+
+# Spawn Candles Randomly
+def spawn_candles(num_candles):
+    candles = []
+    for _ in range(num_candles):
+        platform = random.choice(platforms)  # Choose a random platform for each candle
+        # Ensure the candle fits on the platform
+        platform_left = platform.left + 5
+        platform_right = platform.right - 45
+
+        if platform_left < platform_right:  # Ensure the range is valid
+            x = random.randint(platform_left, platform_right)
+            y = random.randint(platform.top - 45, platform.bottom - 45)  # Adjust y to place candle on platform
+            candle = Candle(x, y)
+            candles.append(candle)
+    return candles
+
+# Game over
+def show_end_screen():
+    screen.fill((0, 0, 0))  # Fill the screen with a solid color for the end screen background
+
+    # Render "Game Over" text
+    game_over_text = pygame.font.Font(None, 74).render("Game Over", True, (255, 0, 0))
+    text_rect = game_over_text.get_rect(center=(width // 2, height // 2 - 50))
+    screen.blit(game_over_text, text_rect)
+
+    # Render "Press R to Restart" text
+    restart_text = pygame.font.Font(None, 36).render("Press R to Restart", True, (255, 255, 255))
+    restart_text_rect = restart_text.get_rect(center=(width // 2, height // 2 + 50))
+    screen.blit(restart_text, restart_text_rect)
+
+    pygame.display.flip()  # Update the display
+
+def show_win_screen():
+    screen.fill((0, 0, 0))  # Fill the screen with a solid color for the end screen background
+
+    # Render "You win!" text
+    game_won_text = pygame.font.Font(None, 74).render("You win!", True, (255, 0, 0))
+    text_rect = game_won_text.get_rect(center=(width // 2, height // 2 - 50))
+    screen.blit(game_won_text, text_rect)
+
+    # Render "Press R to Restart" text
+    restart_text = pygame.font.Font(None, 36).render("Press R to Restart", True, (255, 255, 255))
+    restart_text_rect = restart_text.get_rect(center=(width // 2, height // 2 + 50))
+    screen.blit(restart_text, restart_text_rect)
+
 # Characters
 player = Character('sprite.png', 60, 745, is_player=True)
 enemy1 = Character('ghostsprite2.png', 650, 745, is_player=False)
 enemy1.is_chasing = True
 enemy2 = Character('bat2.png', 305, 150, is_player=False)
-enemy2.is_chasing = False
+enemy2.is_chasing = True
+
+# Score tracking
+score = 0
 
 # Platforms
 platforms = [pygame.Rect(297, 675, 75, 37),
@@ -189,6 +256,7 @@ platforms = [pygame.Rect(297, 675, 75, 37),
 
 # Main Loop
 running = True
+candles = spawn_candles(6)  # Spawn 6 candles randomly
 
 while running:
     keys = pygame.key.get_pressed()
@@ -198,11 +266,48 @@ while running:
         if keys[pygame.K_ESCAPE]:
             sys.exit(1)
 
+        if gameOver and event.type == KEYDOWN and event.key == pygame.K_r:
+            gameOver = False
+            player.health = player.max_health  # Reset player's health
+            score = 0  # Reset the score
+            candles = spawn_candles(6)  # Respawn candles
+
+        if gameWon and event.type == KEYDOWN and event.key == pygame.K_r:
+            gameWon = False
+            player.health = player.max_health  # Reset player's health
+            score = 0  # Reset the score
+            candles = spawn_candles(6)  # Respawn candles
+
+    if gameOver:
+        show_end_screen()  # Show end screen if gameOver is True
+        continue  # Skip the rest of the loop
+
+
+    elif gameWon:
+        show_win_screen()  # Display the win screen
+        pygame.display.flip()  # Update the display to show the win screen
+        for event in pygame.event.get():
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_r:  # Restart the game if 'R' is pressed
+                    gameWon = False
+                    player.health = player.max_health  # Reset player's health
+                    score = 0  # Reset the score
+                    candles = spawn_candles(6)  # Respawn candles
+
+            elif event.type == QUIT:
+
+                running = False  # Allow the game to exit
+
     screen.blit(background, (0, 0))
+
     # Update Characters
-    player.update(enemy1.rect, [enemy1, enemy2])
-    enemy1.update(player.rect, [enemy1, enemy2])
-    enemy2.update(player.rect, [enemy1, enemy2])
+    player.update(enemy1.rect, [enemy1, enemy2], platforms, candles)
+    enemy1.update(player.rect, [enemy1, enemy2] , platforms, candles)
+    enemy2.update(player.rect, [enemy1, enemy2], platforms, candles)
+
+    # Drawing Candles
+    for candle in candles:
+        screen.blit(candle.image, candle.rect)
 
     # Health Bar (Above Player)
     health_bar_width = (player.health / player.max_health) * 100  # Scale health bar width to health percentage
@@ -218,10 +323,21 @@ while running:
     text = font.render("HEALTH", True, (255, 255, 255))
     screen.blit(text, (player.rect.x + (player.rect.width // 2) - 27, player.rect.y - 37))
 
+    # Drawing the Score
+    score_text = font.render(f"Score: {score}", True, (255, 255, 255))  # Render the score text
+    screen.blit(score_text, (10, 10))  # Blit the score text at the top-left corner (10, 10)
+
     # Drawing Characters
     screen.blit(player.image, player.rect)
     screen.blit(enemy1.image, enemy1.rect)
     screen.blit(enemy2.image, enemy2.rect)
+
+    # Game over
+    if player.health <= 0:
+        gameOver = True
+
+    if score >= 5:
+        gameWon = True
 
     pygame.display.flip()
     clock.tick(60)
